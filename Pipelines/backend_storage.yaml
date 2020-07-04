@@ -1,0 +1,54 @@
+trigger:
+- none
+
+pool:
+  name: Hosted Ubuntu 1604
+
+steps:
+
+- bash: |
+    set -euxo pipefail
+
+    echo "Validating required pipeline input, which must be passed into the pipeline."
+
+    echo ARM_TENANT_ID           = $ARM_TENANT_ID
+    echo ARM_SUBSCRIPTION_ID     = $ARM_SUBSCRIPTION_ID
+    echo ARM_REGION              = $ARM_REGION
+    echo ARM_RESOURCE_GROUP_NAME = $ARM_RESOURCE_GROUP_NAME
+    echo ARM_CLIENT_ID           = $ARM_CLIENT_ID
+
+    # This should be stored as a secret variable in the pipeline instance
+    echo ARM_CLIENT_SECRET       = $(ARM_CLIENT_SECRET)
+
+    # create resource group for AKS
+    az login --service-principal --user $ARM_CLIENT_ID --password $(ARM_CLIENT_SECRET) --tenant $ARM_TENANT_ID
+    az group create --location $ARM_REGION --name $ARM_RESOURCE_GROUP_NAME --subscription $ARM_SUBSCRIPTION_ID
+
+    storage_account_name=aks$RANDOM
+
+    # create storage account for backend
+    az storage account create --subscription $ARM_SUBSCRIPTION_ID --resource-group $ARM_RESOURCE_GROUP_NAME --location $ARM_REGION --name $storage_account_name --sku Standard_LRS --encryption-services blob
+    account_key=$(az storage account keys list --resource-group $ARM_RESOURCE_GROUP_NAME --account-name $storage_account_name --query [0].value -o tsv)
+    az storage container create --name terraform --account-name $storage_account_name --account-key $account_key
+  
+    echo "******* for pipeline.tfvars "********"
+    echo "backend_storage_resource_group_name  = \"$ARM_RESOURCE_GROUP_NAME\"" 
+    echo "backend_storage_region               = \"$ARM_REGION\"" 
+    echo "backend_storage_account_name         = \"$storage_account_name\""  
+    echo "storage_account_name                 = \"$storage_account_name\"" 
+
+
+    echo "tenant_id           = \"$ARM_TENANT_ID\""          
+    echo "subscription_id     = \"$ARM_SUBSCRIPTION_ID\""   
+    echo "region              = \"$ARM_REGION\""             
+    echo "resource_group_name = \"$ARM_RESOURCE_GROUP_NAME\"" 
+
+    
+    echo "******** FOR backend.tfvars "********"
+    echo "tenant_id            = \"$ARM_TENANT_ID\""               
+    echo "subscription_id      = \"$ARM_SUBSCRIPTION_ID\""         
+    echo "resource_group_name  = \"$ARM_RESOURCE_GROUP_NAME\""     
+    echo "container_name       = \"terraform\""                     
+    echo "key                  = \"$ARM_RESOURCE_GROUP_NAME.state\""
+
+  displayName: Creation of Terraform Storage Backend for Azure Resources
