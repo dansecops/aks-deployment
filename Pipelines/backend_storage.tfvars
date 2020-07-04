@@ -1,0 +1,6 @@
+subscription_id      = "<Subscription>"
+tenant_id            = "<Tenant>"
+resource_group_name  = "eastus2-terraform-storage-aks"
+storage_account_name = "eus2stgaks"
+container_name       = "terraform"
+key                  = "eastus2-terraform-storage-aks.state"
