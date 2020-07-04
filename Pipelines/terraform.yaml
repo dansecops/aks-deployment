@@ -1,0 +1,99 @@
+steps:
+
+#TF Install
+- task: TerraformInstaller@0
+  displayName: 'Terraform - Install'
+  inputs:
+    terraformVersion: '0.12.26'
+
+#TF Init
+- task: TerraformTaskV1@0
+  displayName: 'Terraform - Init'
+  inputs:
+    provider: 'azurerm'
+    command: 'init'
+    commandOptions: '-input=false'
+    backendServiceArm: '200000-Enterprise-App'
+    backendAzureRmResourceGroupName: '$(TF_STATE_SA_RG)'
+    backendAzureRmStorageAccountName: '$(TF_STATE_STORAGE_ACCOUNT)'
+    backendAzureRmContainerName: '$(TF_STATE_STORAGE_CONTAINER)'
+    backendAzureRmKey: '$(TF_STATE_KEY)'
+
+#TF Plan
+- task: TerraformTaskV1@0
+  displayName: 'Terraform - Plan'
+  inputs:
+    provider: 'azurerm'
+    command: 'plan'
+    commandOptions: '-input=false -var-file="azure-pipeline.tfvars"'
+    environmentServiceNameAzureRM: '200000-Enterprise-App'
+
+#TF Apply
+- task: TerraformTaskV1@0
+  displayName: 'Terraform - Apply'
+  inputs:
+    provider: 'azurerm'
+    command: 'apply'
+    commandOptions: '-input=false -auto-approve -var-file="azure-pipeline.tfvars"'
+    environmentServiceNameAzureRM: '200000-Enterprise-App'
+
+# Docker build tasks using docker compose
+- task: DockerCompose@0
+  displayName: 'Docker - Build'
+  inputs:
+    containerRegistryType: 'Azure Container Registry'
+    azureSubscription: '200000-Enterprise-App'
+    azureContainerRegistry: '{"loginServer":"$(ACR_LOGIN_SERVER)", "id" : "$(ACR_ID)"}'
+    dockerComposeFile: 'docker-compose.yaml'
+    dockerComposeFileArgs: 'DOCKER_BUILD_SOURCE='
+    action: 'Build services'
+    additionalImageTags: '$(Build.BuildId)'
+
+# Docker push
+- task: DockerCompose@0
+  displayName: 'Docker - Push'
+  inputs:
+    containerRegistryType: 'Azure Container Registry'
+    azureSubscription: '200000-Enterprise-App'
+    azureContainerRegistry: '{"loginServer":"$(ACR_LOGIN_SERVER)", "id" : "$(ACR_ID)"}'
+    dockerComposeFile: 'docker-compose.yaml'
+    dockerComposeFileArgs: 'DOCKER_BUILD_SOURCE='
+    action: 'Push services'
+    additionalImageTags: '$(Build.BuildId)'
+
+# AKS Deployment
+- task: Kubernetes@1
+  displayName: 'AKS Deployments & Services'
+  inputs:
+    connectionType: 'Azure Resource Manager'
+    azureSubscriptionEndpoint: '200000-Enterprise-App'
+    azureResourceGroup: '$(AKS_RG_NAME)'
+    kubernetesCluster: '$(AKS_NAME)'
+    command: 'apply'
+    useConfigurationFile: true
+    configuration: '$(System.DefaultWorkingDirectory)/azure-app-deployment.yaml'
+    secretType: 'dockerRegistry'
+    containerRegistryType: 'Azure Container Registry'
+    azureSubscriptionEndpointForSecrets: '200000-Enterprise-App'
+    azureContainerRegistry: '$(ACR_LOGIN_SERVER)'
+    secretName: 'akssecret'
+    versionSpec: '1.8.1'
+    checkLatest: true
+
+#  AKS Update Image
+- task: Kubernetes@1
+  displayName: 'AKS - Update Image'
+  inputs:
+    connectionType: 'Azure Resource Manager'
+    azureSubscriptionEndpoint: 'ARM-DevOps-AKS-DemoApp'
+    azureResourceGroup: '$(AKS_RG_NAME)'
+    kubernetesCluster: '$(AKS_NAME)'
+    command: 'set'
+    arguments: 'image deployment azure-game-front azure-game-front=$(ACR_LOGIN_SERVER)/azure-game-front:$(Build.BuildId)'
+    secretType: 'dockerRegistry'
+    containerRegistryType: 'Azure Container Registry'
+    azureSubscriptionEndpointForSecrets: 'ARM-DevOps-AKS-DemoApp'
+    azureContainerRegistry: '$(ACR_LOGIN_SERVER)'
+    secretName: 'akssecret'
+    versionSpec: '1.8.1'
+    checkLatest: true
