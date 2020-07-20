@@ -51,4 +51,5 @@ steps:
     echo "container_name       = \"terraform\""                     
     echo "key                  = \"$ARM_RESOURCE_GROUP_NAME.state\""
 
+
   displayName: Creation of Terraform Storage Backend for Azure Resources
