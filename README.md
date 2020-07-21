@@ -2,8 +2,100 @@
 Test Deployment of Azure Kubernetes Service
 
 
-# How-to
+# Implementation
 
+## 1. Preparation
+
+### Get the latest available Kubernetes version in region:
+```VERSION=$(az aks get-versions -l eastus --query 'orchestrators[-1].orchestratorVersion' -o tsv)```
+
+### set variables for AKS
+```
+AKS_RESOURCE_GROUP="dan-aks-rg-001"
+AKS_CLUSTER_NAME="dan-aks-cluster-001"
+ACR_NAME="danacr001"
+ACR_RESOURCE_GROUP=$AKS_RESOURCE_GROUP
+REGION="eastus"
+```
+
+## 2. Create an RBAC enabled Cluster
+
+
+```
+# Create Resource Group:
+az group create --name $AKS_RESOURCE_GROUP --location eastus
+
+# Create AKS enabled Cluster
+az aks create \
+    --resource-group $AKS_RESOURCE_GROUP --name $AKS_CLUSTER_NAME \
+    --enable-addons monitoring --kubernetes-version $VERSION \
+    --generate-ssh-keys --location $REGION
+```
+
+### Deploy Azure Container Registory (ACR)
+```az acr create --resource-group dan-aks-rg-001 --name danacr001 --sku Standard --location eastus```
+
+### Grant AKS Service Principal access to ACR
+```
+# Get the id of the service principal configured for AKS:
+CLIENT_ID=$(az aks show --resource-group $AKS_RESOURCE_GROUP --name $AKS_CLUSTER_NAME --query "servicePrincipalProfile.clientId" --output tsv)
+
+# Get ACR registry resource ID
+ACR_ID=$(az acr show --name $ACR_NAME --resource-group $ACR_RESOURCE_GROUP --query "id" --output tsv)
+
+# Create role assignment
+az role assignment create --assignee $CLIENT_ID --role acrpull --scope $ACR_ID
+```
+
+## 3. Create Cosmos DB database
+
+### set variables for Cosmos DB
+```
+ACCOUNTNAME="dan-cosmos-001" #needs to be lower case \
+DATABASENAME="database001" \
+CONTAINERNAME="container001" \
+COSMOS_RESOURCE_GROUP="dan-cosmosdb-001" \
+COSMOSDB_LOCATION="eastus"
+```
+
+### Create Resource Group for Cosmos DB
+```
+az group create -n $COSMOS_RESOURCE_GROUP -l $COSMOSDB_LOCATION
+```
+
+### Create a Cosmos account for SQL API
+```
+az cosmosdb create \
+    -n $ACCOUNTNAME \
+    -g $COSMOS_RESOURCE_GROUP \
+    --default-consistency-level Eventual \
+    --locations regionName='East US' failoverPriority=0 isZoneRedundant=False
+```
+
+### Create a SQL API database
+```
+az cosmosdb sql database create \
+    -a $ACCOUNTNAME \
+    -g $COSMOS_RESOURCE_GROUP \
+    -n $DATABASENAME
+```
+### Create a SQL API container
+```
+az cosmosdb sql container create \
+    -a $ACCOUNTNAME \
+    -g $COSMOS_RESOURCE_GROUP \
+    -d $DATABASENAME \
+    -n $CONTAINERNAME \
+    -p '/zipcode' \
+    --throughput 400
+```
+
+## 4. Receive AKS Credentials
+```
+az aks get-credentials --resource-group $AKS_RESOURCE_GROUP --name $AKS_CLUSTER_NAME
+```
+
+# Further notes
 // Login: 
 az aks get-credentials --resource-group contoso-AKS-rg-001 --name aksnonrbac --subscription "Pay-As-You-Go Dev/Test" 
 
